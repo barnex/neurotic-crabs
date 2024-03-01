@@ -1,3 +1,19 @@
+#[cfg(target_arch = "wasm32")]
+pub type Instant = web_time::Instant;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub type Instant = std::time::Instant;
+
+#[cfg(target_arch = "wasm32")]
+fn now() -> Instant {
+    web_time::Instant::now()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn now() -> Instant {
+    Instant::now()
+}
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
@@ -7,6 +23,12 @@ pub struct MyApp {
 
     #[serde(skip)] // This how you opt-out of serialization of a field
     value: f32,
+
+    #[serde(skip)] // This how you opt-out of serialization of a field
+    last_frame: Instant,
+
+    #[serde(skip)] // This how you opt-out of serialization of a field
+    frame_time: f32,
 }
 
 impl Default for MyApp {
@@ -15,6 +37,8 @@ impl Default for MyApp {
             // Example stuff:
             label: "Hello World!".to_owned(),
             value: 2.7,
+            last_frame: now(),
+            frame_time: 0.0,
         }
     }
 }
@@ -43,6 +67,11 @@ impl eframe::App for MyApp {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let now = now();
+        let frame_time = (now - self.last_frame).as_secs_f32();
+        self.frame_time = 0.98 * self.frame_time + 0.02 * frame_time;
+        self.last_frame = now;
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
 
@@ -55,6 +84,14 @@ impl eframe::App for MyApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
             ui.heading("neurotic crabs");
+
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "'t is {:?}\n frame time: {:.02}ms",
+                    now,
+                    1000.0 * self.frame_time
+                ));
+            });
 
             ui.horizontal(|ui| {
                 ui.label("Write something: ");
@@ -96,5 +133,7 @@ impl eframe::App for MyApp {
                 egui::warn_if_debug_build(ui);
             });
         });
+
+        ctx.request_repaint();
     }
 }
